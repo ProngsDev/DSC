@@ -3,6 +3,4 @@ pragma solidity ^0.8.20;
 
 import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 
-contract DSCEngine {
-
-}
+contract DSCEngine {}
