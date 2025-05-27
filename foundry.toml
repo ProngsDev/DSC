@@ -4,6 +4,4 @@ out = "out"
 libs = ["lib"]
 mappings = ["@openzeppelin/=lib/openzeppelin-contracts/"]
 
-[dependencies]
-openzeppelin-contracts = { git = "https://github.com/OpenZeppelin/openzeppelin-contracts.git", tag = "v4.9.0" }
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
