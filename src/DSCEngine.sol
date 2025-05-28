@@ -20,13 +20,10 @@ contract DSCEngine is ReentrancyGuard {
 
     mapping(address => address) public collateralBalance;
 
-    constructor(
-        address[] memory _collateralTokens,
-        address[] memory _priceFeeds,
-        address dscAddress
-    ) {
-        if (_collateralTokens.length != _priceFeeds.length)
+    constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
+        if (_collateralTokens.length != _priceFeeds.length) {
             revert DSCEngine_TokenAddressAndPriceFeedAddressesAmountsDontMatch();
+        }
 
         for (uint256 i = 0; i < _collateralTokens.length; i++) {
             priceFeeds[_collateralTokens[i]] = _priceFeeds[i];
