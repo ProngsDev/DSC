@@ -15,6 +15,10 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_TransferFailed();
     error DSCEngine_InsufficientCollateral();
     error DSCEngine_RedeemFailed();
+    error DSCEngine_HealthFactorTooLow();
+    error DSCEngine_HealthFactorTooHigh();
+    error DSCEngine_MintFailed();
+    error DSCEngine_BurnAmountExceedsMinted();
 
     //types
 
@@ -27,6 +31,10 @@ contract DSCEngine is ReentrancyGuard {
     mapping(address => address) public collateralBalance;
 
     mapping(address => mapping(address => uint256)) public userCollateralBalance;
+    mapping(address => uint256) public userMintedDsc;
+
+    //Static
+    uint256 public constant MIN_HEALTH_FACTOR = 1e18;
 
     constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
         if (_collateralTokens.length != _priceFeeds.length) {
@@ -38,6 +46,35 @@ contract DSCEngine is ReentrancyGuard {
             collateralTokens.push(_collateralTokens[i]);
         }
         i_dsc = DecentralizedStableCoin(dscAddress);
+    }
+
+    function mintDSC(uint256 amountDscToMint) external nonReentrant {
+        if (amountDscToMint == 0) revert DSCEngine_NeedMoreThanZero();
+
+        userMintedDsc[msg.sender] += amountDscToMint;
+
+        if (_calculateHealthFactor(msg.sender) < MIN_HEALTH_FACTOR) {
+            userMintedDsc[msg.sender] -= amountDscToMint;
+            revert DSCEngine_HealthFactorTooLow();
+        }
+
+        bool minted = i_dsc.mint(msg.sender, amountDscToMint);
+        if (!minted) revert DSCEngine_MintFailed();
+    }
+
+    function burnDSC(uint256 amountDscToBurn) external nonReentrant {
+        if (amountDscToBurn == 0) revert DSCEngine_NeedMoreThanZero();
+
+        if (userMintedDsc[msg.sender] < amountDscToBurn) {
+            revert DSCEngine_BurnAmountExceedsMinted();
+        }
+
+        userMintedDsc[msg.sender] -= amountDscToBurn;
+
+        bool success = i_dsc.transferFrom(msg.sender, address(this), amountDscToBurn);
+        if (!success) revert DSCEngine_TransferFailed();
+
+        i_dsc.burn(amountDscToBurn);
     }
 
     function depositCollateral(address token, uint256 amount) external nonReentrant {
@@ -63,4 +100,6 @@ contract DSCEngine is ReentrancyGuard {
         bool success = IERC20(token).transfer(msg.sender, amount);
         if (!success) revert DSCEngine_RedeemFailed();
     }
+
+    function _calculateHealthFactor(address user) private view returns (uint256) {}
 }
