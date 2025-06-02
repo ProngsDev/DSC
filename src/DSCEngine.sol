@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {AggregatorV3Interface} from "./lib/OracleLib.sol";
 
 import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 
@@ -34,7 +35,8 @@ contract DSCEngine is ReentrancyGuard {
     mapping(address => uint256) public userMintedDsc;
 
     //Static
-    uint256 public constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant LIQUIDATION_THRESHOLD = 150; // 150%
 
     constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
         if (_collateralTokens.length != _priceFeeds.length) {
@@ -101,5 +103,32 @@ contract DSCEngine is ReentrancyGuard {
         if (!success) revert DSCEngine_RedeemFailed();
     }
 
-    function _calculateHealthFactor(address user) private view returns (uint256) {}
+    function _getAccountCollateralValueInUsd(address user) private view returns (uint256 totalUsdValue) {
+        for (uint256 i = 0; i < collateralTokens.length; i++) {
+            address token = collateralTokens[i];
+            uint256 tokenAmount = userCollateralBalance[user][token];
+            totalUsdValue += getUsdValue(token, tokenAmount);
+        }
+    }
+
+    function getUsdValue(address token, uint256 amount) private view returns (uint256) {
+        address feed = priceFeeds[token];
+        (, int256 price,,,) = AggregatorV3Interface(feed).latestRoundData();
+        if (price == 0) revert DSCEngine_TokenNotSupported(token);
+        return (uint256(price) * amount) / 1e8;
+    }
+
+    function _calculateHealthFactor(address user) private view returns (uint256) {
+        uint256 collateralValue = _getAccountCollateralValueInUsd(user);
+        uint256 debtValue = userMintedDsc[user];
+
+        if (debtValue == 0) return type(uint256).max;
+
+        uint256 adjustedCollateral = (collateralValue * 100) / LIQUIDATION_THRESHOLD;
+        return (adjustedCollateral * 1e18) / debtValue;
+    }
+
+    function getHealthFactor(address user) external view returns (uint256) {
+        return _calculateHealthFactor(user);
+    }
 }
