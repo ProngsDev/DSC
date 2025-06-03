@@ -20,6 +20,9 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_HealthFactorTooHigh();
     error DSCEngine_MintFailed();
     error DSCEngine_BurnAmountExceedsMinted();
+    error DSCEngine_HealthFactorOk();
+    error DSCEngine_InvalidDebtAmount();
+    error DSCEngine_HealthFactorNotImproved();
 
     //types
 
@@ -37,6 +40,7 @@ contract DSCEngine is ReentrancyGuard {
     //Static
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
     uint256 private constant LIQUIDATION_THRESHOLD = 150; // 150%
+    uint256 private constant LIQUIDATION_BONUS = 10; // 10%
 
     constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
         if (_collateralTokens.length != _priceFeeds.length) {
@@ -103,6 +107,42 @@ contract DSCEngine is ReentrancyGuard {
         if (!success) revert DSCEngine_RedeemFailed();
     }
 
+    function liquidate(address collateral, address user, uint256 debtToCover) external nonReentrant {
+        if (_calculateHealthFactor(user) >= MIN_HEALTH_FACTOR) {
+            revert DSCEngine_HealthFactorOk();
+        }
+
+        if (debtToCover == 0 || userMintedDsc[user] < debtToCover) {
+            revert DSCEngine_InvalidDebtAmount();
+        }
+
+        bool success = IERC20(collateral).transferFrom(user, address(this), debtToCover);
+        if (!success) revert DSCEngine_TransferFailed();
+
+        i_dsc.burn(debtToCover);
+        userMintedDsc[user] -= debtToCover;
+
+        uint256 collateralUsdValue = debtToCover;
+        uint256 bonus = (collateralUsdValue * LIQUIDATION_BONUS) / 100;
+        uint256 totalCollateralUsd = collateralUsdValue + bonus;
+
+        uint256 collateralAmount = getTokenAmountFromUsd( collateral, totalCollateralUsd);
+
+        uint256 userCollateral = userCollateralBalance[user][collateral];
+        if(userCollateral < collateralAmount) {
+            collateralAmount = userCollateral;
+        }
+
+        userCollateralBalance[user][collateral] -= collateralAmount;
+        userCollateralBalance[msg.sender][collateral] += collateralAmount;
+
+        if(_calculateHealthFactor(user) <= MIN_HEALTH_FACTOR) {
+            revert DSCEngine_HealthFactorNotImproved();
+        }
+
+        //Future: emit Liquidation event;
+    }
+
     function _getAccountCollateralValueInUsd(address user) private view returns (uint256 totalUsdValue) {
         for (uint256 i = 0; i < collateralTokens.length; i++) {
             address token = collateralTokens[i];
@@ -130,5 +170,12 @@ contract DSCEngine is ReentrancyGuard {
 
     function getHealthFactor(address user) external view returns (uint256) {
         return _calculateHealthFactor(user);
+    }
+
+    function getTokenAmountFromUsd(address token, uint256 usdAmount) public view returns(uint256) {
+        address feed = priceFeeds[token];
+        (, int256 price, ,,) = AggregatorV3Interface(feed).latestRoundData();
+        
+        return (usdAmount * 1e8) / uint256(price);
     }
 }
