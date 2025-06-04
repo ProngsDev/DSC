@@ -126,17 +126,17 @@ contract DSCEngine is ReentrancyGuard {
         uint256 bonus = (collateralUsdValue * LIQUIDATION_BONUS) / 100;
         uint256 totalCollateralUsd = collateralUsdValue + bonus;
 
-        uint256 collateralAmount = getTokenAmountFromUsd( collateral, totalCollateralUsd);
+        uint256 collateralAmount = getTokenAmountFromUsd(collateral, totalCollateralUsd);
 
         uint256 userCollateral = userCollateralBalance[user][collateral];
-        if(userCollateral < collateralAmount) {
+        if (userCollateral < collateralAmount) {
             collateralAmount = userCollateral;
         }
 
         userCollateralBalance[user][collateral] -= collateralAmount;
         userCollateralBalance[msg.sender][collateral] += collateralAmount;
 
-        if(_calculateHealthFactor(user) <= MIN_HEALTH_FACTOR) {
+        if (_calculateHealthFactor(user) <= MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorNotImproved();
         }
 
@@ -172,10 +172,10 @@ contract DSCEngine is ReentrancyGuard {
         return _calculateHealthFactor(user);
     }
 
-    function getTokenAmountFromUsd(address token, uint256 usdAmount) public view returns(uint256) {
+    function getTokenAmountFromUsd(address token, uint256 usdAmount) public view returns (uint256) {
         address feed = priceFeeds[token];
-        (, int256 price, ,,) = AggregatorV3Interface(feed).latestRoundData();
-        
+        (, int256 price,,,) = AggregatorV3Interface(feed).latestRoundData();
+
         return (usdAmount * 1e8) / uint256(price);
     }
 }

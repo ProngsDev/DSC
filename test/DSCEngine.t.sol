@@ -42,6 +42,8 @@ contract DSCEngineTest is Test {
         dsc = new DecentralizedStableCoin();
         dsce = new DSCEngine(tokenAddresses, priceFeedAddresses, address(dsc));
 
+        dsc.transferOwnership(address(dsce));
+
         weth.mint(user, USER_MINT_AMOUNT);
         wbtc.mint(user, USER_MINT_AMOUNT);
     }
@@ -85,4 +87,40 @@ contract DSCEngineTest is Test {
         dsce.redeemCollateral(address(weth), 15 ether);
         vm.stopPrank();
     }
+
+    function testMintSucceedsWithProperCollateral() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 amountToMint = 100;
+        dsce.mintDSC(amountToMint);
+
+        uint256 userBalance = dsc.balanceOf(user);
+        assertEq(userBalance, amountToMint);
+        vm.stopPrank();
+    }
+
+    function testMintFailedWithZeroAmount() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 100 ether);
+        dsce.depositCollateral(address(weth), 100 ether);
+        vm.expectRevert(DSCEngine.DSCEngine_NeedMoreThanZero.selector);
+        dsce.mintDSC(0);
+        vm.stopPrank();
+    }
+
+    function testMintFailsHealtFactorTooLow() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 1 ether);
+        dsce.depositCollateral(address(weth), 1 ether);
+
+        uint256 amountToMint = 10001e18;
+
+        vm.expectRevert(DSCEngine.DSCEngine_HealthFactorTooLow.selector);
+        dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+    }
+
+    function testBurnDSC() public {}
 }
