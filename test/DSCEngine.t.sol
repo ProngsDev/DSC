@@ -122,5 +122,43 @@ contract DSCEngineTest is Test {
         vm.stopPrank();
     }
 
-    function testBurnDSC() public {}
+    function testBurnSucceeds() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        uint256 amountToMint = 100;
+        dsce.mintDSC(amountToMint);
+
+        dsc.approve(address(dsce), amountToMint);
+        dsce.burnDSC(amountToMint);
+
+        uint256 userBalance = dsc.balanceOf(user);
+        assertEq(userBalance, 0);
+        vm.stopPrank();
+    }
+
+    function testBurnFailsIfBurnAmountExceeedsMinted() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 amountToMint = 100;
+        dsce.mintDSC(amountToMint);
+
+        uint256 amountToBurn = amountToMint + 1000;
+        dsc.approve(address(dsce), amountToBurn);
+        vm.expectRevert(DSCEngine.DSCEngine_BurnAmountExceedsMinted.selector);
+        dsce.burnDSC(amountToBurn);
+        vm.stopPrank();
+    }
+
+    function testBurnFailsWithZeroAmount() public {
+        vm.startPrank(user);
+        
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        vm.expectRevert(DSCEngine.DSCEngine_NeedMoreThanZero.selector);
+        dsce.burnDSC(0);
+        vm.stopPrank();
+    }
 }
