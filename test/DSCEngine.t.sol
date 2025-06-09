@@ -37,10 +37,7 @@ contract DSCEngineTest is Test {
         btcUsdPriceFeed = new MockV3Aggregator(DECIMALS, BTC_USD_PRICE);
 
         tokenAddresses = [address(weth), address(wbtc)];
-        priceFeedAddresses = [
-            address(ethUsdPriceFeed),
-            address(btcUsdPriceFeed)
-        ];
+        priceFeedAddresses = [address(ethUsdPriceFeed), address(btcUsdPriceFeed)];
 
         dsc = new DecentralizedStableCoin();
         dsce = new DSCEngine(tokenAddresses, priceFeedAddresses, address(dsc));
@@ -189,14 +186,8 @@ contract DSCEngineTest is Test {
         uint256 userHealthFactor = dsce.getHealthFactor(user);
         assertLt(userHealthFactor, 1e18);
 
-        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(
-            liquidator,
-            address(weth)
-        );
-        uint256 userWethBalanceBefore = dsce.userCollateralBalance(
-            user,
-            address(weth)
-        );
+        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(liquidator, address(weth));
+        uint256 userWethBalanceBefore = dsce.userCollateralBalance(user, address(weth));
 
         uint256 debtToCover = 1000e18;
 
@@ -205,35 +196,19 @@ contract DSCEngineTest is Test {
         dsce.liquidate(address(weth), user, debtToCover);
         vm.stopPrank();
 
-        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(
-            liquidator,
-            address(weth)
-        );
-        uint256 userWethBalanceAfter = dsce.userCollateralBalance(
-            user,
-            address(weth)
-        );
+        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(liquidator, address(weth));
+        uint256 userWethBalanceAfter = dsce.userCollateralBalance(user, address(weth));
 
         assertLt(userWethBalanceAfter, userWethBalanceBefore);
         assertGt(liquidatorWethBalanceAfter, liquidatorWethBalanceBefore);
 
-        uint256 expectedCollateralReceived = dsce.getTokenAmountFromUsd(
-            address(weth),
-            debtToCover
-        );
+        uint256 expectedCollateralReceived = dsce.getTokenAmountFromUsd(address(weth), debtToCover);
         uint256 bonusCollateral = (expectedCollateralReceived * 10) / 100;
-        uint256 totalCollateralReceived = expectedCollateralReceived +
-            bonusCollateral;
+        uint256 totalCollateralReceived = expectedCollateralReceived + bonusCollateral;
 
-        assertEq(
-            liquidatorWethBalanceAfter - liquidatorWethBalanceBefore,
-            totalCollateralReceived
-        );
+        assertEq(liquidatorWethBalanceAfter - liquidatorWethBalanceBefore, totalCollateralReceived);
 
-        assertEq(
-            userWethBalanceBefore - userWethBalanceAfter,
-            totalCollateralReceived
-        );
+        assertEq(userWethBalanceBefore - userWethBalanceAfter, totalCollateralReceived);
     }
 
     function testLiquidateImprovesHealthFactor() public {
@@ -284,14 +259,8 @@ contract DSCEngineTest is Test {
         assertLt(userHealthFactor, 1e18);
 
         // Record balances before liquidation
-        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(
-            liquidator,
-            address(weth)
-        );
-        uint256 userWethBalanceBefore = dsce.userCollateralBalance(
-            user,
-            address(weth)
-        );
+        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(liquidator, address(weth));
+        uint256 userWethBalanceBefore = dsce.userCollateralBalance(user, address(weth));
 
         // Try to liquidate more than the user has as collateral
         uint256 debtToCover = amountDscToMint; // Try to liquidate all debt
@@ -302,29 +271,17 @@ contract DSCEngineTest is Test {
         vm.stopPrank();
 
         // Check balances after liquidation
-        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(
-            liquidator,
-            address(weth)
-        );
-        uint256 userWethBalanceAfter = dsce.userCollateralBalance(
-            user,
-            address(weth)
-        );
+        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(liquidator, address(weth));
+        uint256 userWethBalanceAfter = dsce.userCollateralBalance(user, address(weth));
 
         // User should have 0 collateral left
         assertEq(userWethBalanceAfter, 0);
 
         // Liquidator should have received all the user's collateral
-        assertEq(
-            liquidatorWethBalanceAfter - liquidatorWethBalanceBefore,
-            userWethBalanceBefore
-        );
+        assertEq(liquidatorWethBalanceAfter - liquidatorWethBalanceBefore, userWethBalanceBefore);
 
         // The user's collateral should be completely gone
-        assertEq(
-            userWethBalanceBefore - userWethBalanceAfter,
-            userWethBalanceBefore
-        );
+        assertEq(userWethBalanceBefore - userWethBalanceAfter, userWethBalanceBefore);
     }
 
     function testCannotLiquidateHealthyUser() public {
@@ -334,25 +291,25 @@ contract DSCEngineTest is Test {
         uint256 amountDscToMint = 500e18;
         dsce.mintDSC(amountDscToMint);
         vm.stopPrank();
-        
+
         // Verify initial health factor is good
         uint256 initialHealthFactor = dsce.getHealthFactor(user);
         assertGt(initialHealthFactor, 1e18);
-        
+
         // Attempt to liquidate a healthy position (should fail)
         vm.startPrank(liquidator);
         vm.expectRevert(DSCEngine.DSCEngine_HealthFactorOk.selector);
         dsce.liquidate(address(weth), user, amountDscToMint);
         vm.stopPrank();
-        
+
         // Even with a moderate price drop, position should remain healthy
         int256 newEthPrice = ETH_USD_PRICE * 80 / 100; // 20% price drop
         ethUsdPriceFeed.updateAnswer(newEthPrice);
-        
+
         // Verify health factor is still good after price drop
         uint256 healthFactorAfterPriceDrop = dsce.getHealthFactor(user);
         assertGt(healthFactorAfterPriceDrop, 1e18);
-        
+
         // Attempt to liquidate should still fail
         vm.startPrank(liquidator);
         vm.expectRevert(DSCEngine.DSCEngine_HealthFactorOk.selector);
