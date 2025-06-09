@@ -360,7 +360,45 @@ contract DSCEngineTest is Test {
         vm.stopPrank();
     }
 
-    function testCannotLiquidateWithZeroDebtToCover() public {}
+    function testCannotLiquidateWithZeroDebtToCover() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
 
-    function testCannotLiquidateMoreThanUserDebt() public {}
+        uint256 amountToMint = 5000e18;
+        dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+
+        int256 newEthPrice = ETH_USD_PRICE / 3;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        vm.startPrank(liquidator);
+        vm.expectRevert(DSCEngine.DSCEngine_InvalidDebtAmount.selector);
+        dsce.liquidate(address(weth), user, 0);
+        vm.stopPrank();
+    }
+
+    function testCannotLiquidateMoreThanUserDebt() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 amountToMint = 5000e18;
+        dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+
+        int256 newEthPrice = ETH_USD_PRICE / 3;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        vm.startPrank(liquidator);
+        vm.expectRevert(DSCEngine.DSCEngine_InvalidDebtAmount.selector);
+        dsce.liquidate(address(weth), user, amountToMint * 2);
+        vm.stopPrank();
+    }
 }
