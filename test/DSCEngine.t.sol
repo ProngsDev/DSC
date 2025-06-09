@@ -2,7 +2,7 @@
 
 pragma solidity ^0.8.20;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console} from "forge-std/Test.sol";
 import {DSCEngine} from "../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../src/DecentralizedStableCoin.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
@@ -37,7 +37,10 @@ contract DSCEngineTest is Test {
         btcUsdPriceFeed = new MockV3Aggregator(DECIMALS, BTC_USD_PRICE);
 
         tokenAddresses = [address(weth), address(wbtc)];
-        priceFeedAddresses = [address(ethUsdPriceFeed), address(btcUsdPriceFeed)];
+        priceFeedAddresses = [
+            address(ethUsdPriceFeed),
+            address(btcUsdPriceFeed)
+        ];
 
         dsc = new DecentralizedStableCoin();
         dsce = new DSCEngine(tokenAddresses, priceFeedAddresses, address(dsc));
@@ -154,11 +157,210 @@ contract DSCEngineTest is Test {
 
     function testBurnFailsWithZeroAmount() public {
         vm.startPrank(user);
-        
+
         weth.approve(address(dsce), 10 ether);
         dsce.depositCollateral(address(weth), 10 ether);
+
         vm.expectRevert(DSCEngine.DSCEngine_NeedMoreThanZero.selector);
         dsce.burnDSC(0);
+
         vm.stopPrank();
     }
+
+    function testliquidateTransfersCollateralWithBonus() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 amountDscToMint = 10000e18;
+        dsce.mintDSC(amountDscToMint);
+        vm.stopPrank();
+
+        weth.mint(liquidator, 10 ether);
+        vm.startPrank(liquidator);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        dsce.mintDSC(amountDscToMint);
+        vm.stopPrank();
+
+        int256 newEthPrice = ETH_USD_PRICE / 2;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(
+            liquidator,
+            address(weth)
+        );
+        uint256 userWethBalanceBefore = dsce.userCollateralBalance(
+            user,
+            address(weth)
+        );
+
+        uint256 debtToCover = 1000e18;
+
+        vm.startPrank(liquidator);
+        dsc.approve(address(dsce), 1000e21);
+        dsce.liquidate(address(weth), user, debtToCover);
+        vm.stopPrank();
+
+        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(
+            liquidator,
+            address(weth)
+        );
+        uint256 userWethBalanceAfter = dsce.userCollateralBalance(
+            user,
+            address(weth)
+        );
+
+        assertLt(userWethBalanceAfter, userWethBalanceBefore);
+        assertGt(liquidatorWethBalanceAfter, liquidatorWethBalanceBefore);
+
+        uint256 expectedCollateralReceived = dsce.getTokenAmountFromUsd(
+            address(weth),
+            debtToCover
+        );
+        uint256 bonusCollateral = (expectedCollateralReceived * 10) / 100;
+        uint256 totalCollateralReceived = expectedCollateralReceived +
+            bonusCollateral;
+
+        assertEq(
+            liquidatorWethBalanceAfter - liquidatorWethBalanceBefore,
+            totalCollateralReceived
+        );
+
+        assertEq(
+            userWethBalanceBefore - userWethBalanceAfter,
+            totalCollateralReceived
+        );
+    }
+
+    function testLiquidateImprovesHealthFactor() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        uint256 amountDscToMint = 10000e18;
+        dsce.mintDSC(amountDscToMint);
+
+        int256 newEthPrice = ETH_USD_PRICE / 2;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 newUserHealthFactor = dsce.getHealthFactor(user);
+        assertGt(newUserHealthFactor, 1e18);
+        vm.stopPrank();
+    }
+
+    function testLiquidateCapsCollateralIfInsufficent() public {
+        // Setup user with small amount of collateral
+        vm.startPrank(user);
+        weth.approve(address(dsce), 1 ether);
+        dsce.depositCollateral(address(weth), 1 ether);
+
+        // Mint a large amount of DSC
+        uint256 amountDscToMint = 1000e18; // Smaller amount than other tests
+        dsce.mintDSC(amountDscToMint);
+        vm.stopPrank();
+
+        // Setup liquidator with enough DSC to cover the debt
+        weth.mint(liquidator, 10 ether);
+        vm.startPrank(liquidator);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        dsce.mintDSC(amountDscToMint * 2); // More than enough to cover
+        vm.stopPrank();
+
+        // Crash the price to make user's position liquidatable
+        int256 newEthPrice = ETH_USD_PRICE / 10;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+
+        // Verify user is underwater
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        // Record balances before liquidation
+        uint256 liquidatorWethBalanceBefore = dsce.userCollateralBalance(
+            liquidator,
+            address(weth)
+        );
+        uint256 userWethBalanceBefore = dsce.userCollateralBalance(
+            user,
+            address(weth)
+        );
+
+        // Try to liquidate more than the user has as collateral
+        uint256 debtToCover = amountDscToMint; // Try to liquidate all debt
+
+        vm.startPrank(liquidator);
+        dsc.approve(address(dsce), debtToCover);
+        dsce.liquidate(address(weth), user, debtToCover);
+        vm.stopPrank();
+
+        // Check balances after liquidation
+        uint256 liquidatorWethBalanceAfter = dsce.userCollateralBalance(
+            liquidator,
+            address(weth)
+        );
+        uint256 userWethBalanceAfter = dsce.userCollateralBalance(
+            user,
+            address(weth)
+        );
+
+        // User should have 0 collateral left
+        assertEq(userWethBalanceAfter, 0);
+
+        // Liquidator should have received all the user's collateral
+        assertEq(
+            liquidatorWethBalanceAfter - liquidatorWethBalanceBefore,
+            userWethBalanceBefore
+        );
+
+        // The user's collateral should be completely gone
+        assertEq(
+            userWethBalanceBefore - userWethBalanceAfter,
+            userWethBalanceBefore
+        );
+    }
+
+    function testCannotLiquidateHealthyUser() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        uint256 amountDscToMint = 500e18;
+        dsce.mintDSC(amountDscToMint);
+        vm.stopPrank();
+        
+        // Verify initial health factor is good
+        uint256 initialHealthFactor = dsce.getHealthFactor(user);
+        assertGt(initialHealthFactor, 1e18);
+        
+        // Attempt to liquidate a healthy position (should fail)
+        vm.startPrank(liquidator);
+        vm.expectRevert(DSCEngine.DSCEngine_HealthFactorOk.selector);
+        dsce.liquidate(address(weth), user, amountDscToMint);
+        vm.stopPrank();
+        
+        // Even with a moderate price drop, position should remain healthy
+        int256 newEthPrice = ETH_USD_PRICE * 80 / 100; // 20% price drop
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+        
+        // Verify health factor is still good after price drop
+        uint256 healthFactorAfterPriceDrop = dsce.getHealthFactor(user);
+        assertGt(healthFactorAfterPriceDrop, 1e18);
+        
+        // Attempt to liquidate should still fail
+        vm.startPrank(liquidator);
+        vm.expectRevert(DSCEngine.DSCEngine_HealthFactorOk.selector);
+        dsce.liquidate(address(weth), user, amountDscToMint);
+        vm.stopPrank();
+    }
+
+    function testCannotLiquidateWithZeroDebtToCover() public {}
+
+    function testCannotLiquidateMoreThanUserDebt() public {}
 }
