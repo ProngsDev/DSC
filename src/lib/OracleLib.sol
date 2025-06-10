@@ -15,7 +15,7 @@ import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interf
 library OracleLib {
     error OracleLib__StalePrice();
 
-    uint256 private constant TIMEOUT = 3 hours;
+    uint256 private constant TIMEOUT = 1 hours;
 
     function staleCheckLatestRoundData(AggregatorV3Interface chainlinkFeed)
         public

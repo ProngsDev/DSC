@@ -3,13 +3,14 @@ pragma solidity ^0.8.20;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {AggregatorV3Interface} from "./lib/OracleLib.sol";
-
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {OracleLib} from "./lib/OracleLib.sol";
 import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 
 contract DSCEngine is ReentrancyGuard {
-    //errors
+    using OracleLib for AggregatorV3Interface;
 
+    //errors
     error DSCEngine_TokenAddressAndPriceFeedAddressesAmountsDontMatch();
     error DSCEngine_NeedMoreThanZero();
     error DSCEngine_TokenNotSupported(address token);
@@ -23,6 +24,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_HealthFactorOk();
     error DSCEngine_InvalidDebtAmount();
     error DSCEngine_HealthFactorNotImproved();
+    error DSCEngine_InvalidPrice();
 
     //types
 
@@ -32,7 +34,7 @@ contract DSCEngine is ReentrancyGuard {
     address[] public collateralTokens;
 
     mapping(address => address) public priceFeeds;
-    mapping(address => address) public collateralBalance;
+
 
     mapping(address => mapping(address => uint256)) public userCollateralBalance;
     mapping(address => uint256) public userMintedDsc;
@@ -103,6 +105,12 @@ contract DSCEngine is ReentrancyGuard {
 
         userCollateralBalance[msg.sender][token] -= amount;
 
+        uint256 healthFactor = _calculateHealthFactor(msg.sender);
+        if (healthFactor < MIN_HEALTH_FACTOR) {
+            userCollateralBalance[msg.sender][token] += amount;
+            revert DSCEngine_HealthFactorTooLow();
+        }
+
         bool success = IERC20(token).transfer(msg.sender, amount);
         if (!success) revert DSCEngine_RedeemFailed();
     }
@@ -153,9 +161,10 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function getUsdValue(address token, uint256 amount) private view returns (uint256) {
-        address feed = priceFeeds[token];
-        (, int256 price,,,) = AggregatorV3Interface(feed).latestRoundData();
-        if (price == 0) revert DSCEngine_TokenNotSupported(token);
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
+
+        if (price <= 0) revert DSCEngine_InvalidPrice();
         return (uint256(price) * amount) / 1e8;
     }
 
@@ -174,9 +183,10 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function getTokenAmountFromUsd(address token, uint256 usdAmount) public view returns (uint256) {
-        address feed = priceFeeds[token];
-        (, int256 price,,,) = AggregatorV3Interface(feed).latestRoundData();
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(priceFeeds[token]);
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
 
+        if (price <= 0) revert DSCEngine_InvalidPrice();
         return (usdAmount * 1e8) / uint256(price);
     }
 }
