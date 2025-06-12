@@ -16,6 +16,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_TokenNotSupported(address token);
     error DSCEngine_TransferFailed();
     error DSCEngine_InsufficientCollateral();
+    error DSCEngine_InsufficentDSCBalance();
     error DSCEngine_RedeemFailed();
     error DSCEngine_HealthFactorTooLow();
     error DSCEngine_HealthFactorTooHigh();
@@ -25,8 +26,14 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_InvalidDebtAmount();
     error DSCEngine_HealthFactorNotImproved();
     error DSCEngine_InvalidPrice();
+    error DSCEngine_ZeroAddress();
 
-    //types
+    //events
+    event DSCMinted(address indexed user, uint256 amount);
+    event DSCBurned(address indexed user, uint256 amount);
+    event CollateralDeposit(address indexed user, address indexed token, uint256 amount);
+    event CollateralRedeemed(address indexed user, address indexed token, uint256 amount, address indexed receiver);
+    event Liquidation(address indexed liquidator, address indexed user, address indexed token, uint256 amount);
 
     //state variables
     DecentralizedStableCoin private immutable i_dsc;
@@ -44,11 +51,14 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private constant LIQUIDATION_BONUS = 10; // 10%
 
     constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
+        if (dscAddress == address(0)) revert DSCEngine_ZeroAddress();
         if (_collateralTokens.length != _priceFeeds.length) {
             revert DSCEngine_TokenAddressAndPriceFeedAddressesAmountsDontMatch();
         }
 
         for (uint256 i = 0; i < _collateralTokens.length; i++) {
+            if (_collateralTokens[i] == address(0)) revert DSCEngine_ZeroAddress();
+            if (_priceFeeds[i] == address(0)) revert DSCEngine_ZeroAddress();
             priceFeeds[_collateralTokens[i]] = _priceFeeds[i];
             collateralTokens.push(_collateralTokens[i]);
         }
@@ -58,15 +68,21 @@ contract DSCEngine is ReentrancyGuard {
     function mintDSC(uint256 amountDscToMint) external nonReentrant {
         if (amountDscToMint == 0) revert DSCEngine_NeedMoreThanZero();
 
-        userMintedDsc[msg.sender] += amountDscToMint;
+        uint256 collateralValue = _getAccountCollateralValueInUsd(msg.sender);
+        uint256 newDebtValue = userMintedDsc[msg.sender] + amountDscToMint;
 
-        if (_calculateHealthFactor(msg.sender) < MIN_HEALTH_FACTOR) {
-            userMintedDsc[msg.sender] -= amountDscToMint;
+        uint256 healtFactorAfter = (collateralValue * 100 * 1e18) / (LIQUIDATION_THRESHOLD * newDebtValue);
+
+        if (healtFactorAfter < MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorTooLow();
         }
 
+        userMintedDsc[msg.sender] += amountDscToMint;
+
         bool minted = i_dsc.mint(msg.sender, amountDscToMint);
         if (!minted) revert DSCEngine_MintFailed();
+
+        emit DSCMinted(msg.sender, amountDscToMint);
     }
 
     function burnDSC(uint256 amountDscToBurn) external nonReentrant {
@@ -76,12 +92,14 @@ contract DSCEngine is ReentrancyGuard {
             revert DSCEngine_BurnAmountExceedsMinted();
         }
 
-        userMintedDsc[msg.sender] -= amountDscToBurn;
-
         bool success = i_dsc.transferFrom(msg.sender, address(this), amountDscToBurn);
         if (!success) revert DSCEngine_TransferFailed();
 
+        userMintedDsc[msg.sender] -= amountDscToBurn;
+
         i_dsc.burn(amountDscToBurn);
+
+        emit DSCBurned(msg.sender, amountDscToBurn);
     }
 
     function depositCollateral(address token, uint256 amount) external nonReentrant {
@@ -94,7 +112,8 @@ contract DSCEngine is ReentrancyGuard {
 
         bool success = IERC20(token).transferFrom(msg.sender, address(this), amount);
         if (!success) revert DSCEngine_TransferFailed();
-        //Future: emit event
+
+        emit CollateralDeposit(msg.sender, token, amount);
     }
 
     function redeemCollateral(address token, uint256 amount) external nonReentrant {
@@ -102,19 +121,30 @@ contract DSCEngine is ReentrancyGuard {
         uint256 userBalance = userCollateralBalance[msg.sender][token];
         if (userBalance < amount) revert DSCEngine_InsufficientCollateral();
 
-        userCollateralBalance[msg.sender][token] -= amount;
+        uint256 collateralBalanceAfter = _getAccountCollateralValueInUsd(msg.sender) - getUsdValue(token, amount);
 
-        uint256 healthFactor = _calculateHealthFactor(msg.sender);
-        if (healthFactor < MIN_HEALTH_FACTOR) {
-            userCollateralBalance[msg.sender][token] += amount;
-            revert DSCEngine_HealthFactorTooLow();
+        uint256 debtValue = userMintedDsc[msg.sender];
+
+        if (debtValue > 0) {
+            uint256 healthFactorAfter = (collateralBalanceAfter * 100 * 1e18) / (LIQUIDATION_THRESHOLD * debtValue);
+            if (healthFactorAfter < MIN_HEALTH_FACTOR) {
+                revert DSCEngine_HealthFactorTooLow();
+            }
         }
 
+        userCollateralBalance[msg.sender][token] -= amount;
+
         bool success = IERC20(token).transfer(msg.sender, amount);
-        if (!success) revert DSCEngine_RedeemFailed();
+        if (!success) {
+            userCollateralBalance[msg.sender][token] += amount;
+            revert DSCEngine_RedeemFailed();
+        }
+
+        emit CollateralRedeemed(msg.sender, token, amount, msg.sender);
     }
 
     function liquidate(address collateral, address user, uint256 debtToCover) external nonReentrant {
+        if (i_dsc.balanceOf(msg.sender) < debtToCover) revert DSCEngine_InsufficentDSCBalance();
         uint256 startingHealthFactor = _calculateHealthFactor(user);
         if (startingHealthFactor >= MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorOk();
@@ -148,7 +178,7 @@ contract DSCEngine is ReentrancyGuard {
         // with liquidation bonus can temporarily worsen health factor while still
         // reducing overall system risk by burning bad debt
 
-        //Future: emit Liquidation event;
+        emit Liquidation(msg.sender, user, collateral, debtToCover);
     }
 
     function _getAccountCollateralValueInUsd(address user) private view returns (uint256 totalUsdValue) {

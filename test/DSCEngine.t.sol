@@ -292,6 +292,14 @@ contract DSCEngineTest is Test {
         dsce.mintDSC(amountDscToMint);
         vm.stopPrank();
 
+        // Setup liquidator with DSC tokens to cover the debt
+        weth.mint(liquidator, 10 ether);
+        vm.startPrank(liquidator);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        dsce.mintDSC(amountDscToMint); // Mint enough DSC to cover liquidation
+        vm.stopPrank();
+
         // Verify initial health factor is good
         uint256 initialHealthFactor = dsce.getHealthFactor(user);
         assertGt(initialHealthFactor, 1e18);
@@ -345,6 +353,14 @@ contract DSCEngineTest is Test {
 
         uint256 amountToMint = 5000e18;
         dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+
+        // Setup liquidator with enough DSC tokens to attempt the liquidation
+        weth.mint(liquidator, 20 ether);
+        vm.startPrank(liquidator);
+        weth.approve(address(dsce), 20 ether);
+        dsce.depositCollateral(address(weth), 20 ether);
+        dsce.mintDSC(amountToMint * 2); // Mint enough DSC to cover the attempted liquidation
         vm.stopPrank();
 
         int256 newEthPrice = ETH_USD_PRICE / 3;
