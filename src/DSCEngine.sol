@@ -58,12 +58,16 @@ contract DSCEngine is ReentrancyGuard {
     function mintDSC(uint256 amountDscToMint) external nonReentrant {
         if (amountDscToMint == 0) revert DSCEngine_NeedMoreThanZero();
 
-        userMintedDsc[msg.sender] += amountDscToMint;
+        uint256 collateralValue = _getAccountCollateralValueInUsd(msg.sender);
+        uint256 newDebtValue = userMintedDsc[msg.sender] + amountDscToMint;
 
-        if (_calculateHealthFactor(msg.sender) < MIN_HEALTH_FACTOR) {
-            userMintedDsc[msg.sender] -= amountDscToMint;
+        uint256 healtFactorAfter = (collateralValue * 100 * 1e18) / (LIQUIDATION_THRESHOLD * newDebtValue);
+
+        if (healtFactorAfter < MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorTooLow();
         }
+
+        userMintedDsc[msg.sender] += amountDscToMint;
 
         bool minted = i_dsc.mint(msg.sender, amountDscToMint);
         if (!minted) revert DSCEngine_MintFailed();
@@ -76,10 +80,10 @@ contract DSCEngine is ReentrancyGuard {
             revert DSCEngine_BurnAmountExceedsMinted();
         }
 
-        userMintedDsc[msg.sender] -= amountDscToBurn;
-
         bool success = i_dsc.transferFrom(msg.sender, address(this), amountDscToBurn);
         if (!success) revert DSCEngine_TransferFailed();
+
+        userMintedDsc[msg.sender] -= amountDscToBurn;
 
         i_dsc.burn(amountDscToBurn);
     }
@@ -102,13 +106,18 @@ contract DSCEngine is ReentrancyGuard {
         uint256 userBalance = userCollateralBalance[msg.sender][token];
         if (userBalance < amount) revert DSCEngine_InsufficientCollateral();
 
-        userCollateralBalance[msg.sender][token] -= amount;
+        uint256 collateralBalanceAfter = _getAccountCollateralValueInUsd(msg.sender) - getUsdValue(token, amount);
 
-        uint256 healthFactor = _calculateHealthFactor(msg.sender);
-        if (healthFactor < MIN_HEALTH_FACTOR) {
-            userCollateralBalance[msg.sender][token] += amount;
-            revert DSCEngine_HealthFactorTooLow();
+        uint256 debtValue = userMintedDsc[msg.sender];
+
+        if (debtValue > 0) {
+            uint256 healthFactorAfter = (collateralBalanceAfter * 100 * 1e18) / (LIQUIDATION_THRESHOLD * debtValue);
+            if (healthFactorAfter < MIN_HEALTH_FACTOR) {
+                revert DSCEngine_HealthFactorTooLow();
+            }
         }
+
+        userCollateralBalance[msg.sender][token] -= amount;
 
         bool success = IERC20(token).transfer(msg.sender, amount);
         if (!success) revert DSCEngine_RedeemFailed();
