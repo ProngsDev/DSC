@@ -26,7 +26,12 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_HealthFactorNotImproved();
     error DSCEngine_InvalidPrice();
 
-    //types
+    //events
+    event DSCMinted(address indexed user, uint256 amount);
+    event DSCBurned(address indexed user, uint256 amount);
+    event CollateralDeposit(address indexed user, address indexed token, uint256 amount);
+    event CollateralRedeemed(address indexed user, address indexed token, uint256 amount, address indexed receiver);
+    event Liquidation(address indexed liquidator, address indexed user, address indexed token, uint256 amount);
 
     //state variables
     DecentralizedStableCoin private immutable i_dsc;
@@ -71,6 +76,8 @@ contract DSCEngine is ReentrancyGuard {
 
         bool minted = i_dsc.mint(msg.sender, amountDscToMint);
         if (!minted) revert DSCEngine_MintFailed();
+
+        emit DSCMinted(msg.sender, amountDscToMint);
     }
 
     function burnDSC(uint256 amountDscToBurn) external nonReentrant {
@@ -86,6 +93,8 @@ contract DSCEngine is ReentrancyGuard {
         userMintedDsc[msg.sender] -= amountDscToBurn;
 
         i_dsc.burn(amountDscToBurn);
+
+        emit DSCBurned(msg.sender, amountDscToBurn);
     }
 
     function depositCollateral(address token, uint256 amount) external nonReentrant {
@@ -98,7 +107,8 @@ contract DSCEngine is ReentrancyGuard {
 
         bool success = IERC20(token).transferFrom(msg.sender, address(this), amount);
         if (!success) revert DSCEngine_TransferFailed();
-        //Future: emit event
+
+        emit CollateralDeposit(msg.sender, token, amount);
     }
 
     function redeemCollateral(address token, uint256 amount) external nonReentrant {
@@ -121,6 +131,8 @@ contract DSCEngine is ReentrancyGuard {
 
         bool success = IERC20(token).transfer(msg.sender, amount);
         if (!success) revert DSCEngine_RedeemFailed();
+
+        emit CollateralRedeemed(msg.sender, token, amount, msg.sender);
     }
 
     function liquidate(address collateral, address user, uint256 debtToCover) external nonReentrant {
@@ -157,7 +169,7 @@ contract DSCEngine is ReentrancyGuard {
         // with liquidation bonus can temporarily worsen health factor while still
         // reducing overall system risk by burning bad debt
 
-        //Future: emit Liquidation event;
+        emit Liquidation(msg.sender, user, collateral, debtToCover);
     }
 
     function _getAccountCollateralValueInUsd(address user) private view returns (uint256 totalUsdValue) {
