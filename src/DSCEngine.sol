@@ -16,6 +16,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_TokenNotSupported(address token);
     error DSCEngine_TransferFailed();
     error DSCEngine_InsufficientCollateral();
+    error DSCEngine_InsufficentDSCBalance();
     error DSCEngine_RedeemFailed();
     error DSCEngine_HealthFactorTooLow();
     error DSCEngine_HealthFactorTooHigh();
@@ -140,6 +141,7 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function liquidate(address collateral, address user, uint256 debtToCover) external nonReentrant {
+        if (i_dsc.balanceOf(msg.sender) < debtToCover) revert DSCEngine_InsufficentDSCBalance();
         uint256 startingHealthFactor = _calculateHealthFactor(user);
         if (startingHealthFactor >= MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorOk();
