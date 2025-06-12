@@ -135,7 +135,10 @@ contract DSCEngine is ReentrancyGuard {
         userCollateralBalance[msg.sender][token] -= amount;
 
         bool success = IERC20(token).transfer(msg.sender, amount);
-        if (!success) revert DSCEngine_RedeemFailed();
+        if (!success) {
+            userCollateralBalance[msg.sender][token] += amount;
+            revert DSCEngine_RedeemFailed();
+        }
 
         emit CollateralRedeemed(msg.sender, token, amount, msg.sender);
     }
