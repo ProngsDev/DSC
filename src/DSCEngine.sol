@@ -25,6 +25,7 @@ contract DSCEngine is ReentrancyGuard {
     error DSCEngine_InvalidDebtAmount();
     error DSCEngine_HealthFactorNotImproved();
     error DSCEngine_InvalidPrice();
+    error DSCEngine_ZeroAddress();
 
     //events
     event DSCMinted(address indexed user, uint256 amount);
@@ -49,11 +50,14 @@ contract DSCEngine is ReentrancyGuard {
     uint256 private constant LIQUIDATION_BONUS = 10; // 10%
 
     constructor(address[] memory _collateralTokens, address[] memory _priceFeeds, address dscAddress) {
+        if (dscAddress == address(0)) revert DSCEngine_ZeroAddress();
         if (_collateralTokens.length != _priceFeeds.length) {
             revert DSCEngine_TokenAddressAndPriceFeedAddressesAmountsDontMatch();
         }
 
         for (uint256 i = 0; i < _collateralTokens.length; i++) {
+            if (_collateralTokens[i] == address(0)) revert DSCEngine_ZeroAddress();
+            if (_priceFeeds[i] == address(0)) revert DSCEngine_ZeroAddress();
             priceFeeds[_collateralTokens[i]] = _priceFeeds[i];
             collateralTokens.push(_collateralTokens[i]);
         }
