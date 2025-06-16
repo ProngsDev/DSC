@@ -71,9 +71,9 @@ contract DSCEngine is ReentrancyGuard {
         uint256 collateralValue = _getAccountCollateralValueInUsd(msg.sender);
         uint256 newDebtValue = userMintedDsc[msg.sender] + amountDscToMint;
 
-        uint256 healtFactorAfter = (collateralValue * 100 * 1e18) / (LIQUIDATION_THRESHOLD * newDebtValue);
+        uint256 healthFactorAfter = (collateralValue * 100 * 1e18) / (LIQUIDATION_THRESHOLD * newDebtValue);
 
-        if (healtFactorAfter < MIN_HEALTH_FACTOR) {
+        if (healthFactorAfter < MIN_HEALTH_FACTOR) {
             revert DSCEngine_HealthFactorTooLow();
         }
 
