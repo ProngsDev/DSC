@@ -3,6 +3,7 @@ pragma solidity ^0.8.20;
 
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {OracleLib} from "./lib/OracleLib.sol";
 import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
@@ -144,6 +145,11 @@ contract DSCEngine is ReentrancyGuard {
     }
 
     function liquidate(address collateral, address user, uint256 debtToCover) external nonReentrant {
+        // Validate that the collateral token is supported
+        if (priceFeeds[collateral] == address(0)) {
+            revert DSCEngine_TokenNotSupported(collateral);
+        }
+
         if (i_dsc.balanceOf(msg.sender) < debtToCover) revert DSCEngine_InsufficientDSCBalance();
         uint256 startingHealthFactor = _calculateHealthFactor(user);
         if (startingHealthFactor >= MIN_HEALTH_FACTOR) {
@@ -194,7 +200,16 @@ contract DSCEngine is ReentrancyGuard {
         (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
 
         if (price <= 0) revert DSCEngine_InvalidPrice();
-        return (uint256(price) * amount) / 1e8;
+
+        // Get token decimals to handle precision correctly
+        uint8 tokenDecimals = IERC20Metadata(token).decimals();
+        uint8 priceFeedDecimals = priceFeed.decimals();
+
+        // Calculate USD value with proper decimal handling
+        // Formula: (price * amount * 1e18) / (10^priceFeedDecimals * 10^tokenDecimals)
+        // This normalizes to 18 decimal places for consistent USD representation
+        uint256 priceWithDecimals = uint256(price) * (10 ** (18 - priceFeedDecimals));
+        return (priceWithDecimals * amount) / (10 ** tokenDecimals);
     }
 
     function _calculateHealthFactor(address user) private view returns (uint256) {
@@ -216,6 +231,15 @@ contract DSCEngine is ReentrancyGuard {
         (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
 
         if (price <= 0) revert DSCEngine_InvalidPrice();
-        return (usdAmount * 1e8) / uint256(price);
+
+        // Get token decimals to handle precision correctly
+        uint8 tokenDecimals = IERC20Metadata(token).decimals();
+        uint8 priceFeedDecimals = priceFeed.decimals();
+
+        // Calculate token amount with proper decimal handling
+        // Formula: (usdAmount * 10^tokenDecimals * 10^priceFeedDecimals) / (price * 1e18)
+        // usdAmount is expected to be in 18 decimal format
+        uint256 adjustedUsdAmount = usdAmount * (10 ** (tokenDecimals + priceFeedDecimals));
+        return adjustedUsdAmount / (uint256(price) * 1e18);
     }
 }
