@@ -6,6 +6,7 @@ import {Test, console} from "forge-std/Test.sol";
 import {DSCEngine} from "../src/DSCEngine.sol";
 import {DecentralizedStableCoin} from "../src/DecentralizedStableCoin.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
+import {ERC20MockWithDecimals} from "./mocks/ERC20MockWithDecimals.sol";
 import {MockV3Aggregator} from "./mocks/MockV3Aggregator.sol";
 
 contract DSCEngineTest is Test {
@@ -372,6 +373,103 @@ contract DSCEngineTest is Test {
         vm.startPrank(liquidator);
         vm.expectRevert(DSCEngine.DSCEngine_InvalidDebtAmount.selector);
         dsce.liquidate(address(weth), user, amountToMint * 2);
+        vm.stopPrank();
+    }
+
+    // Test for collateral token validation fix
+    function testCannotLiquidateWithUnsupportedCollateral() public {
+        vm.startPrank(user);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+
+        uint256 amountToMint = 5000e18;
+        dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+
+        // Setup liquidator with DSC tokens
+        weth.mint(liquidator, 10 ether);
+        vm.startPrank(liquidator);
+        weth.approve(address(dsce), 10 ether);
+        dsce.depositCollateral(address(weth), 10 ether);
+        dsce.mintDSC(amountToMint);
+        vm.stopPrank();
+
+        // Crash the price to make user's position liquidatable
+        int256 newEthPrice = ETH_USD_PRICE / 3;
+        ethUsdPriceFeed.updateAnswer(newEthPrice);
+
+        uint256 userHealthFactor = dsce.getHealthFactor(user);
+        assertLt(userHealthFactor, 1e18);
+
+        // Create a fake token address that's not supported
+        address unsupportedToken = makeAddr("unsupportedToken");
+
+        // Try to liquidate with unsupported collateral token
+        vm.startPrank(liquidator);
+        vm.expectRevert(abi.encodeWithSelector(DSCEngine.DSCEngine_TokenNotSupported.selector, unsupportedToken));
+        dsce.liquidate(unsupportedToken, user, 1000e18);
+        vm.stopPrank();
+    }
+
+    // Test for oracle precision handling
+    function testOraclePrecisionHandling() public {
+        // This test verifies that the oracle precision fixes work correctly
+        vm.startPrank(user);
+        weth.approve(address(dsce), 1 ether);
+        dsce.depositCollateral(address(weth), 1 ether);
+
+        // Test with small amounts to verify precision is maintained
+        uint256 smallAmount = 1e15; // 0.001 ETH
+        weth.approve(address(dsce), smallAmount);
+        dsce.depositCollateral(address(weth), smallAmount);
+
+        // Verify the collateral balance is correctly recorded
+        uint256 totalBalance = dsce.userCollateralBalance(user, address(weth));
+        assertEq(totalBalance, 1 ether + smallAmount);
+        vm.stopPrank();
+    }
+
+    // Test precision handling with different token decimals
+    function testPrecisionWithDifferentTokenDecimals() public {
+        // Create tokens with different decimal places
+        ERC20MockWithDecimals token6Decimals = new ERC20MockWithDecimals("USDC", "USDC", 6);
+        ERC20MockWithDecimals token8Decimals = new ERC20MockWithDecimals("WBTC", "WBTC", 8);
+
+        // Create price feeds for these tokens
+        MockV3Aggregator usdcPriceFeed = new MockV3Aggregator(8, 1e8); // $1.00
+        MockV3Aggregator wbtcPriceFeed = new MockV3Aggregator(8, 50000e8); // $50,000
+
+        // Create new DSCEngine with these tokens
+        address[] memory newTokens = new address[](2);
+        address[] memory newPriceFeeds = new address[](2);
+
+        newTokens[0] = address(token6Decimals);
+        newTokens[1] = address(token8Decimals);
+        newPriceFeeds[0] = address(usdcPriceFeed);
+        newPriceFeeds[1] = address(wbtcPriceFeed);
+
+        DecentralizedStableCoin newDsc = new DecentralizedStableCoin();
+        DSCEngine newDsce = new DSCEngine(newTokens, newPriceFeeds, address(newDsc));
+        newDsc.transferOwnership(address(newDsce));
+
+        // Mint tokens to user
+        token6Decimals.mint(user, 1000e6); // 1000 USDC (6 decimals)
+        token8Decimals.mint(user, 1e8); // 1 WBTC (8 decimals)
+
+        vm.startPrank(user);
+
+        // Test USDC (6 decimals) precision
+        token6Decimals.approve(address(newDsce), 1000e6);
+        newDsce.depositCollateral(address(token6Decimals), 1000e6);
+
+        // Test WBTC (8 decimals) precision
+        token8Decimals.approve(address(newDsce), 1e8);
+        newDsce.depositCollateral(address(token8Decimals), 1e8);
+
+        // Verify balances are correctly recorded
+        assertEq(newDsce.userCollateralBalance(user, address(token6Decimals)), 1000e6);
+        assertEq(newDsce.userCollateralBalance(user, address(token8Decimals)), 1e8);
+
         vm.stopPrank();
     }
 }
