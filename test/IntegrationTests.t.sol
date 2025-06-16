@@ -63,51 +63,51 @@ contract IntegrationTests is Test {
         uint256 mintAmount = 5000e18;
 
         vm.startPrank(alice);
-        
+
         // 1. Deposit collateral
         weth.approve(address(dsce), collateralAmount);
         dsce.depositCollateral(address(weth), collateralAmount);
-        
+
         assertEq(dsce.userCollateralBalance(alice, address(weth)), collateralAmount);
         assertEq(weth.balanceOf(address(dsce)), collateralAmount);
-        
+
         // 2. Mint DSC
         dsce.mintDSC(mintAmount);
-        
+
         assertEq(dsc.balanceOf(alice), mintAmount);
         assertEq(dsce.userMintedDsc(alice), mintAmount);
-        
+
         uint256 healthFactor = dsce.getHealthFactor(alice);
         assertGt(healthFactor, 1e18, "Health factor should be > 1");
-        
+
         // 3. Burn some DSC
         uint256 burnAmount = mintAmount / 2;
         dsc.approve(address(dsce), burnAmount);
         dsce.burnDSC(burnAmount);
-        
+
         assertEq(dsc.balanceOf(alice), mintAmount - burnAmount);
         assertEq(dsce.userMintedDsc(alice), mintAmount - burnAmount);
-        
+
         // 4. Redeem some collateral
         uint256 redeemAmount = collateralAmount / 4;
         dsce.redeemCollateral(address(weth), redeemAmount);
-        
+
         assertEq(dsce.userCollateralBalance(alice, address(weth)), collateralAmount - redeemAmount);
-        
+
         // 5. Burn remaining DSC
         uint256 remainingDebt = dsce.userMintedDsc(alice);
         dsc.approve(address(dsce), remainingDebt);
         dsce.burnDSC(remainingDebt);
-        
+
         assertEq(dsc.balanceOf(alice), 0);
         assertEq(dsce.userMintedDsc(alice), 0);
-        
+
         // 6. Redeem remaining collateral
         uint256 remainingCollateral = dsce.userCollateralBalance(alice, address(weth));
         dsce.redeemCollateral(address(weth), remainingCollateral);
-        
+
         assertEq(dsce.userCollateralBalance(alice, address(weth)), 0);
-        
+
         vm.stopPrank();
     }
 
@@ -149,7 +149,7 @@ contract IntegrationTests is Test {
 
         // Verify total DSC supply
         assertEq(dsc.totalSupply(), 35000e18);
-        
+
         // Verify all positions are healthy
         assertGt(dsce.getHealthFactor(alice), 1e18);
         assertGt(dsce.getHealthFactor(bob), 1e18);
@@ -164,43 +164,43 @@ contract IntegrationTests is Test {
         dsce.depositCollateral(address(weth), 10 ether);
         dsce.mintDSC(12000e18); // High leverage
         vm.stopPrank();
-        
+
         vm.startPrank(bob);
         weth.approve(address(dsce), 8 ether);
         dsce.depositCollateral(address(weth), 8 ether);
         dsce.mintDSC(9000e18); // High leverage
         vm.stopPrank();
-        
+
         // Setup liquidator
         vm.startPrank(liquidator);
         weth.approve(address(dsce), 20 ether);
         dsce.depositCollateral(address(weth), 20 ether);
         dsce.mintDSC(15000e18);
         vm.stopPrank();
-        
+
         // Crash ETH price by 60%
         ethUsdPriceFeed.updateAnswer(ETH_USD_PRICE * 40 / 100);
-        
+
         // Both Alice and Bob should be liquidatable
         assertLt(dsce.getHealthFactor(alice), 1e18);
         assertLt(dsce.getHealthFactor(bob), 1e18);
-        
+
         // Liquidate Alice
         vm.startPrank(liquidator);
         dsc.approve(address(dsce), 12000e18);
         dsce.liquidate(address(weth), alice, 6000e18); // Partial liquidation
         vm.stopPrank();
-        
+
         // Liquidate Bob
         vm.startPrank(liquidator);
         dsc.approve(address(dsce), 9000e18);
         dsce.liquidate(address(weth), bob, 4500e18); // Partial liquidation
         vm.stopPrank();
-        
+
         // Verify liquidations occurred
         assertLt(dsce.userMintedDsc(alice), 12000e18);
         assertLt(dsce.userMintedDsc(bob), 9000e18);
-        
+
         // Liquidator should have gained collateral
         assertGt(dsce.userCollateralBalance(liquidator, address(weth)), 20 ether);
     }
@@ -213,29 +213,29 @@ contract IntegrationTests is Test {
         dsce.depositCollateral(address(weth), 10 ether);
         dsce.mintDSC(8000e18);
         vm.stopPrank();
-        
+
         vm.startPrank(liquidator);
         weth.approve(address(dsce), 20 ether);
         dsce.depositCollateral(address(weth), 20 ether);
         dsce.mintDSC(10000e18);
         vm.stopPrank();
-        
+
         uint256 initialHealthFactor = dsce.getHealthFactor(alice);
         assertGt(initialHealthFactor, 1e18);
-        
+
         // Simulate extreme price volatility
         int256[] memory prices = new int256[](5);
-        prices[0] = ETH_USD_PRICE / 2;     // 50% drop
+        prices[0] = ETH_USD_PRICE / 2; // 50% drop
         prices[1] = ETH_USD_PRICE * 3 / 4; // Recovery to 75%
-        prices[2] = ETH_USD_PRICE / 3;     // Crash to 33%
-        prices[3] = ETH_USD_PRICE;         // Full recovery
-        prices[4] = ETH_USD_PRICE * 2;     // 100% gain
-        
+        prices[2] = ETH_USD_PRICE / 3; // Crash to 33%
+        prices[3] = ETH_USD_PRICE; // Full recovery
+        prices[4] = ETH_USD_PRICE * 2; // 100% gain
+
         for (uint256 i = 0; i < prices.length; i++) {
             ethUsdPriceFeed.updateAnswer(prices[i]);
-            
+
             uint256 healthFactor = dsce.getHealthFactor(alice);
-            
+
             if (healthFactor < 1e18) {
                 // Position is liquidatable
                 vm.startPrank(liquidator);
@@ -247,7 +247,7 @@ contract IntegrationTests is Test {
                 vm.stopPrank();
             }
         }
-        
+
         // System should remain stable throughout volatility
         assertTrue(dsc.totalSupply() > 0, "DSC should still exist");
         assertTrue(weth.balanceOf(address(dsce)) > 0, "Collateral should remain in system");
@@ -281,14 +281,14 @@ contract IntegrationTests is Test {
         dsce.depositCollateral(address(weth), 30 ether);
         dsce.mintDSC(35000e18);
         vm.stopPrank();
-        
+
         // Crash price
         ethUsdPriceFeed.updateAnswer(ETH_USD_PRICE / 3);
-        
+
         assertLt(dsce.getHealthFactor(alice), 1e18);
-        
+
         uint256 aliceDebtBefore = dsce.userMintedDsc(alice);
-        
+
         // Both liquidators compete to liquidate
         vm.startPrank(liquidator);
         dsc.approve(address(dsce), 25000e18);
@@ -318,7 +318,7 @@ contract IntegrationTests is Test {
         users[0] = alice;
         users[1] = bob;
         users[2] = charlie;
-        
+
         // Each user deposits and mints
         for (uint256 i = 0; i < users.length; i++) {
             vm.startPrank(users[i]);
@@ -327,19 +327,19 @@ contract IntegrationTests is Test {
             dsce.mintDSC(8000e18);
             vm.stopPrank();
         }
-        
+
         // Setup liquidator
         vm.startPrank(liquidator);
         weth.approve(address(dsce), 50 ether);
         dsce.depositCollateral(address(weth), 50 ether);
         dsce.mintDSC(30000e18);
         vm.stopPrank();
-        
+
         uint256 totalSupplyBefore = dsc.totalSupply();
-        
+
         // Major price crash
         ethUsdPriceFeed.updateAnswer(ETH_USD_PRICE / 4);
-        
+
         // Liquidate all users
         vm.startPrank(liquidator);
         for (uint256 i = 0; i < users.length; i++) {
@@ -350,24 +350,24 @@ contract IntegrationTests is Test {
             }
         }
         vm.stopPrank();
-        
+
         uint256 totalSupplyAfter = dsc.totalSupply();
-        
+
         // Total supply should decrease due to debt burning
         assertLt(totalSupplyAfter, totalSupplyBefore);
-        
+
         // Price recovery
         ethUsdPriceFeed.updateAnswer(ETH_USD_PRICE);
-        
+
         // New users should be able to use the system normally
         address newUser = makeAddr("newUser");
         weth.mint(newUser, 20 ether);
-        
+
         vm.startPrank(newUser);
         weth.approve(address(dsce), 10 ether);
         dsce.depositCollateral(address(weth), 10 ether);
         dsce.mintDSC(5000e18);
-        
+
         assertEq(dsc.balanceOf(newUser), 5000e18);
         assertGt(dsce.getHealthFactor(newUser), 1e18);
         vm.stopPrank();
@@ -385,7 +385,7 @@ contract IntegrationTests is Test {
         dsce.depositCollateral(address(wbtc), 0.5e8);
         dsce.mintDSC(15000e18); // Higher leverage to make liquidatable when ETH crashes
         vm.stopPrank();
-        
+
         // Setup liquidator
         // 10 ETH * $2000 = $20,000 collateral
         // Max safe mint at 150% = $20,000 * 100/150 = $13,333
@@ -394,13 +394,13 @@ contract IntegrationTests is Test {
         dsce.depositCollateral(address(weth), 10 ether);
         dsce.mintDSC(10000e18); // Conservative amount
         vm.stopPrank();
-        
+
         // Crash both ETH and BTC prices to make position liquidatable
         ethUsdPriceFeed.updateAnswer(ETH_USD_PRICE / 10); // 90% price drop
         btcUsdPriceFeed.updateAnswer(BTC_USD_PRICE / 10); // 90% price drop
-        
+
         assertLt(dsce.getHealthFactor(alice), 1e18);
-        
+
         // Liquidator can choose which collateral to seize
         vm.startPrank(liquidator);
         dsc.approve(address(dsce), 10000e18);
@@ -411,7 +411,7 @@ contract IntegrationTests is Test {
         // Liquidate BTC collateral (partial)
         dsce.liquidate(address(wbtc), alice, 5000e18);
         vm.stopPrank();
-        
+
         // Alice should have reduced debt and collateral
         assertLt(dsce.userMintedDsc(alice), 15000e18);
         assertLt(dsce.userCollateralBalance(alice, address(weth)), 5 ether);

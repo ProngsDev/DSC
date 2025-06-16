@@ -59,9 +59,9 @@ contract FuzzTests is Test {
 
         vm.startPrank(user);
         weth.approve(address(dsce), amount);
-        
+
         dsce.depositCollateral(address(weth), amount);
-        
+
         assertEq(dsce.userCollateralBalance(user, address(weth)), amount);
         vm.stopPrank();
     }
@@ -114,7 +114,7 @@ contract FuzzTests is Test {
         if (debtAmount <= maxSafeMint) {
             dsce.mintDSC(debtAmount);
             uint256 healthFactor = dsce.getHealthFactor(user);
-            
+
             // Health factor should be >= 1e18 for safe positions
             assertGe(healthFactor, 1e18, "Health factor should be >= 1e18 for safe positions");
         }
@@ -161,12 +161,12 @@ contract FuzzTests is Test {
         ethUsdPriceFeed.updateAnswer(newPrice);
 
         uint256 healthFactor = dsce.getHealthFactor(user);
-        
+
         if (healthFactor < 1e18) {
             // Position should be liquidatable
             vm.startPrank(liquidator);
             dsc.approve(address(dsce), debtAmount);
-            
+
             // Liquidation should succeed
             dsce.liquidate(address(weth), user, debtAmount / 2); // Partial liquidation
             vm.stopPrank();
@@ -211,7 +211,7 @@ contract FuzzTests is Test {
 
         if (mintAmount <= maxSafeMint) {
             dsce.mintDSC(mintAmount);
-            
+
             if (burnAmount <= mintAmount) {
                 dsc.approve(address(dsce), burnAmount);
                 dsce.burnDSC(burnAmount);
@@ -232,7 +232,7 @@ contract FuzzTests is Test {
         mintAmount = bound(mintAmount, 1e18, 100000e18);
 
         vm.startPrank(user);
-        
+
         // Deposit both collaterals
         weth.approve(address(dsce), ethAmount);
         wbtc.approve(address(dsce), btcAmount);
@@ -283,15 +283,15 @@ contract FuzzTests is Test {
 
         if (mintAmount <= maxSafeMint) {
             dsce.mintDSC(mintAmount);
-            
+
             // Change price
             int256 newPrice = (initialPrice * priceChange) / 100;
             if (newPrice > 0) {
                 ethUsdPriceFeed.updateAnswer(newPrice);
-                
+
                 // Check health factor after price change
                 uint256 healthFactor = dsce.getHealthFactor(user);
-                
+
                 if (healthFactor < 1e18) {
                     // Position became liquidatable
                     assertTrue(true, "Position correctly became liquidatable after price drop");

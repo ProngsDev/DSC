@@ -56,7 +56,7 @@ contract GasOptimizationTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("Gas used for depositCollateral:", gasUsed);
-        
+
         // Verify functionality still works
         assertEq(dsce.userCollateralBalance(user, address(weth)), COLLATERAL_AMOUNT);
         vm.stopPrank();
@@ -78,7 +78,7 @@ contract GasOptimizationTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("Gas used for mintDSC:", gasUsed);
-        
+
         // Verify functionality
         assertEq(dsc.balanceOf(user), DSC_AMOUNT);
         assertEq(dsce.userMintedDsc(user), DSC_AMOUNT);
@@ -103,7 +103,7 @@ contract GasOptimizationTest is Test {
         uint256 gasUsed = gasBefore - gasleft();
 
         console.log("Gas used for burnDSC:", gasUsed);
-        
+
         // Verify functionality
         assertEq(dsc.balanceOf(user), 0);
         assertEq(dsce.userMintedDsc(user), 0);
@@ -135,7 +135,7 @@ contract GasOptimizationTest is Test {
 
         vm.startPrank(liquidator);
         dsc.approve(address(dsce), DSC_AMOUNT);
-        
+
         uint256 gasBefore = gasleft();
         dsce.liquidate(address(weth), user, DSC_AMOUNT);
         uint256 gasUsed = gasBefore - gasleft();
@@ -163,10 +163,10 @@ contract GasOptimizationTest is Test {
 
         console.log("Gas used for getHealthFactor:", gasUsed);
         console.log("Health factor:", healthFactor);
-        
+
         // Health factor should be reasonable (> 1e18 for healthy position)
         assertGt(healthFactor, 1e18);
-        
+
         // Gas usage should be very low for view function (under 50k)
         assertLt(gasUsed, 50000, "Health factor calculation gas usage too high");
     }
@@ -179,7 +179,7 @@ contract GasOptimizationTest is Test {
         uint256 gasUsed;
 
         vm.startPrank(user);
-        
+
         // 1. Approve and deposit collateral
         weth.approve(address(dsce), COLLATERAL_AMOUNT);
         gasBefore = gasleft();
@@ -213,7 +213,7 @@ contract GasOptimizationTest is Test {
         vm.stopPrank();
 
         console.log("Total gas used for workflow:", totalGasUsed);
-        
+
         // Total workflow should be efficient (under 400k gas)
         assertLt(totalGasUsed, 400000, "Total workflow gas usage too high");
     }
@@ -222,26 +222,26 @@ contract GasOptimizationTest is Test {
     /// @dev Ensures gas optimizations maintain correctness
     function testOptimizationsPreserveFunctionality() public {
         vm.startPrank(user);
-        
+
         // Test full workflow functionality
         weth.approve(address(dsce), COLLATERAL_AMOUNT);
         dsce.depositCollateral(address(weth), COLLATERAL_AMOUNT);
-        
+
         uint256 initialBalance = dsce.userCollateralBalance(user, address(weth));
         assertEq(initialBalance, COLLATERAL_AMOUNT);
-        
+
         dsce.mintDSC(DSC_AMOUNT);
         assertEq(dsc.balanceOf(user), DSC_AMOUNT);
         assertEq(dsce.userMintedDsc(user), DSC_AMOUNT);
-        
+
         uint256 healthFactor = dsce.getHealthFactor(user);
         assertGt(healthFactor, 1e18, "Position should be healthy");
-        
+
         dsc.approve(address(dsce), DSC_AMOUNT);
         dsce.burnDSC(DSC_AMOUNT);
         assertEq(dsc.balanceOf(user), 0);
         assertEq(dsce.userMintedDsc(user), 0);
-        
+
         vm.stopPrank();
     }
 }
