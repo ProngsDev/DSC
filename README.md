@@ -164,30 +164,104 @@ sequenceDiagram
 ### Prerequisites
 - [Foundry](https://book.getfoundry.sh/getting-started/installation)
 - [Git](https://git-scm.com/downloads)
+- [Make](https://www.gnu.org/software/make/) (optional, for convenience commands)
 
 ### Installation
 ```bash
 git clone <repository-url>
 cd DSC
-forge install
+make install
+# or: forge install
 ```
 
 ### Build
 ```bash
-forge build
+make build
+# or: forge build
 ```
 
 ### Test
 ```bash
 # Run all tests
-forge test
+make test
+# or: forge test
 
 # Run tests with verbosity
 forge test -vvv
 
-# Run specific test
-forge test --match-test testDepositCollateral
+# Run specific test suites
+make test-unit          # Unit tests
+make test-integration   # Integration tests
+make test-fuzz         # Fuzz tests
+make test-gas          # Gas optimization tests
 ```
+
+## 🚀 Deployment
+
+The DSC protocol includes comprehensive deployment scripts for multiple networks with professional deployment workflows.
+
+### Quick Deployment Commands
+
+```bash
+# Local development (Anvil)
+make anvil              # Start local blockchain (separate terminal)
+make deploy-local       # Deploy to local network
+
+# Testnet deployment (Sepolia)
+make deploy-sepolia     # Deploy to Sepolia testnet
+
+# Mainnet deployment (with safety checks)
+make deploy-mainnet     # Deploy to Ethereum mainnet
+```
+
+### Environment Setup
+
+1. **Copy environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Configure your environment:**
+   ```bash
+   # Required for testnet/mainnet deployments
+   PRIVATE_KEY=your_private_key_without_0x_prefix
+   SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your_api_key
+   MAINNET_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/your_api_key
+   ETHERSCAN_API_KEY=your_etherscan_api_key
+   ```
+
+### Network Configurations
+
+| Network | Chain ID | Purpose | Collateral Assets |
+|---------|----------|---------|-------------------|
+| **Anvil (Local)** | 31337 | Development | Mock WETH, Mock WBTC |
+| **Sepolia** | 11155111 | Testing | Testnet WETH, WBTC |
+| **Mainnet** | 1 | Production | WETH, WBTC |
+
+### Deployment Features
+
+- ✅ **Multi-network support** (Local, Sepolia, Mainnet)
+- ✅ **Automatic contract verification** on Etherscan
+- ✅ **Pre/post-deployment validation**
+- ✅ **Gas estimation and optimization**
+- ✅ **Safety checks and confirmations**
+- ✅ **Comprehensive logging and monitoring**
+
+### Post-Deployment Interactions
+
+```bash
+# Deposit collateral and mint DSC (local)
+make deposit-local
+make mint-local
+make status-local
+
+# Testnet interactions
+make deposit-sepolia
+make mint-sepolia
+make status-sepolia
+```
+
+For detailed deployment instructions, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## 📋 Contract Functions
 
@@ -312,15 +386,29 @@ src/
 └── lib/
     └── OracleLib.sol          # Chainlink oracle utilities
 
+script/                        # Deployment and interaction scripts
+├── DeployDSC.s.sol           # Main deployment script
+├── HelperConfig.s.sol        # Network configuration helper
+├── Interactions.s.sol        # Post-deployment interaction scripts
+├── VerifyContracts.s.sol     # Contract verification utilities
+└── GasEstimation.s.sol       # Gas cost estimation
+
 test/
 ├── DSCEngine.t.sol            # Original comprehensive test suite
 ├── FuzzTests.t.sol            # Property-based fuzz testing
 ├── EdgeCases.t.sol            # Boundary conditions and edge cases
 ├── IntegrationTests.t.sol     # End-to-end workflow testing
 ├── GasOptimization.t.sol      # Gas usage benchmarking
+├── DeploymentTest.t.sol       # Deployment script testing
 └── mocks/                     # Mock contracts for testing
     ├── ERC20MockWithDecimals.sol
     └── MockV3Aggregator.sol
+
+docs/                          # Documentation
+├── DEPLOYMENT.md              # Comprehensive deployment guide
+├── SECURITY_CHECKLIST.md      # Security deployment checklist
+├── .env.example              # Environment configuration template
+└── Makefile                  # Convenient deployment commands
 ```
 
 ### Contributing

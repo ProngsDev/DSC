@@ -6,6 +6,28 @@ remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "@forge-std/=lib/forge-std/",
     "@chainlink/=lib/chainlink-evm/",
+    "foundry-devops/=lib/foundry-devops/",
 ]
+
+# Filesystem permissions for deployment scripts
+fs_permissions = [
+    { access = "read", path = "./broadcast" },
+    { access = "read", path = "./reports" },
+    { access = "read", path = "./.env" },
+]
+
+# Enable FFI for foundry-devops
+ffi = true
+
+# RPC endpoints for different networks
+[rpc_endpoints]
+mainnet = "${MAINNET_RPC_URL}"
+sepolia = "${SEPOLIA_RPC_URL}"
+local = "http://localhost:8545"
+
+# Etherscan configuration
+[etherscan]
+mainnet = { key = "${ETHERSCAN_API_KEY}" }
+sepolia = { key = "${ETHERSCAN_API_KEY}" }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
