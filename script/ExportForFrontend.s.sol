@@ -69,7 +69,7 @@ contract ExportForFrontend is Script {
     /**
      * @notice Generate JSON output for frontend consumption
      */
-    function _generateJsonOutput(ContractAddresses memory addresses) internal view {
+    function _generateJsonOutput(ContractAddresses memory addresses) internal pure {
         console.log("");
         console.log("=== JSON for Frontend (copy to your frontend config) ===");
         console.log("{");
@@ -89,7 +89,7 @@ contract ExportForFrontend is Script {
     /**
      * @notice Generate environment variables for frontend
      */
-    function _generateEnvOutput(ContractAddresses memory addresses) internal view {
+    function _generateEnvOutput(ContractAddresses memory addresses) internal pure {
         console.log("");
         console.log("=== Environment Variables for Frontend ===");
         console.log("# Add these to your frontend .env file");
@@ -107,7 +107,7 @@ contract ExportForFrontend is Script {
     /**
      * @notice Log frontend integration instructions
      */
-    function _logFrontendInstructions(ContractAddresses memory addresses) internal view {
+    function _logFrontendInstructions(ContractAddresses memory addresses) internal pure {
         console.log("");
         console.log("=== Frontend Integration Instructions ===");
         console.log("1. Configure your wallet to connect to Anvil:");
@@ -135,7 +135,7 @@ contract ExportForFrontend is Script {
     /**
      * @notice Get ABI file paths for frontend
      */
-    function getAbiPaths() external view {
+    function getAbiPaths() external pure {
         console.log("=== ABI File Paths ===");
         console.log("DSC ABI: ./out/DecentralizedStableCoin.sol/DecentralizedStableCoin.json");
         console.log("DSCEngine ABI: ./out/DSCEngine.sol/DSCEngine.json");
