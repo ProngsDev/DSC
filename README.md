@@ -2,6 +2,17 @@
 
 A decentralized stablecoin protocol built with Solidity and Foundry, featuring over-collateralized positions, automated liquidations, and Chainlink oracle integration.
 
+## 🔗 Complete System
+
+This repository contains the **smart contracts** for the DSC Protocol. For the complete system:
+
+| Component | Repository | Description |
+|-----------|------------|-------------|
+| **Smart Contracts** | [DSC](https://github.com/ProngsDev/DSC) | Core protocol logic, deployment scripts, and tests *(this repository)* |
+| **Frontend Application** | [DSC_FE](https://github.com/ProngsDev/DSC_FE) | Next.js web interface for interacting with the protocol |
+
+> 💡 **Quick Start**: Deploy the smart contracts first, then set up the frontend to interact with your deployed contracts.
+
 ## 🏗️ Architecture Overview
 
 The DSC protocol consists of two main contracts:
